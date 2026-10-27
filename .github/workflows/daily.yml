@@ -1,0 +1,33 @@
+name: daily forecast
+
+# Every night, just after midnight in Paris: download the consumption of the day that just
+# ended, publish the forecast of the new day, run the monitoring checks, and commit the
+# updated database so the dashboard stays live.
+on:
+  schedule:
+    - cron: "47 23 * * *"   # 23:47 UTC = 00:47 (winter) or 01:47 (summer) in Paris
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  daily:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python -m gridcast.cli daily
+        env:
+          PYTHONPATH: src
+      - name: Commit updated data
+        run: |
+          git config user.name "gridcast-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add -f data/gridcast.duckdb models/*.json models/*.csv models/*.parquet
+          git commit -m "Daily forecast $(date -u +%F)" || echo "Nothing to commit"
+          git push
