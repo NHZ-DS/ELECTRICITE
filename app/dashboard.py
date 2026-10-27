@@ -15,7 +15,7 @@ import pandas as pd  # noqa: E402
 import plotly.graph_objects as go  # noqa: E402
 import streamlit as st  # noqa: E402
 
-from gridcast.config import MODELS_DIR  # noqa: E402
+from gridcast.config import REPORTS_DIR  # noqa: E402
 from gridcast.data.store import Store  # noqa: E402
 from gridcast.pipeline import MAIN_MODEL  # noqa: E402
 
@@ -39,7 +39,7 @@ def load_data():
 
 
 def read_json(name: str) -> dict | None:
-    path = MODELS_DIR / name
+    path = REPORTS_DIR / name
     return json.loads(path.read_text()) if path.exists() else None
 
 

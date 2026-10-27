@@ -6,8 +6,8 @@ import logging
 from datetime import date, timedelta
 
 import pandas as pd
-
-from gridcast.config import CONFIG, MODELS_DIR, TIMEZONE, ModelConfig
+from gridcast.registry import save_model
+from gridcast.config import CONFIG, REPORTS_DIR, TIMEZONE, ModelConfig
 from gridcast.conformal import HourlyConformal
 from gridcast.data import rte, weather
 from gridcast.data.store import Store
@@ -55,21 +55,22 @@ def load_demo(store: Store, days: int = 760) -> dict:
 def run_backtest(store: Store, test_weeks: int = 26, cfg: ModelConfig = CONFIG) -> pd.DataFrame:
     df = store.load_dataset()
     preds, summary = backtest(df.dropna(subset=["load_mw"]), test_weeks=test_weeks, cfg=cfg)
-    MODELS_DIR.mkdir(exist_ok=True)
-    preds.to_parquet(MODELS_DIR / "backtest_predictions.parquet", index=False)
-    summary.to_csv(MODELS_DIR / "backtest_summary.csv", index=False)
+    REPORTS_DIR.mkdir(exist_ok=True)
+    preds.to_parquet(REPORTS_DIR / "backtest_predictions.parquet", index=False)
+    summary.to_csv(REPORTS_DIR / "backtest_summary.csv", index=False)
 
     feats = build_features(df.dropna(subset=["load_mw"]), cfg).dropna(subset=FEATURES_ML)
     sensitivity = ThermalModel().fit(feats, feats["load_mw"]).heating_sensitivity_mw_per_degree()
     report = {"summary": summary.to_dict(orient="records"),
               "heating_sensitivity_mw_per_degC": sensitivity,
               "test_weeks": test_weeks}
-    (MODELS_DIR / "backtest_report.json").write_text(json.dumps(report, indent=2))
+    (REPORTS_DIR / "backtest_report.json").write_text(json.dumps(report, indent=2))
     return summary
 
 
 # ---------------------------------------------------------------- forecasting
-def forecast_day(df: pd.DataFrame, target_day: pd.Timestamp, cfg: ModelConfig = CONFIG) -> pd.DataFrame:
+def forecast_day(df: pd.DataFrame, target_day: pd.Timestamp, cfg: ModelConfig = CONFIG,
+                 save: bool = False) -> pd.DataFrame:
     """Forecast the 24 hours of ``target_day`` using only information available at its midnight."""
     end = target_day + pd.Timedelta(days=1)
     visible = df[df["ts"] < end].copy()
@@ -87,6 +88,15 @@ def forecast_day(df: pd.DataFrame, target_day: pd.Timestamp, cfg: ModelConfig = 
         conf = HourlyConformal(cfg.alpha).fit(cal["hour"], cal["load_mw"].to_numpy(), model.predict(cal))
         yhat = model.predict(target)
         lower, upper = conf.interval(target["hour"], yhat)
+        if save and model.name == MAIN_MODEL:
+            save_model(model, conf, {
+                "trained_at": pd.Timestamp.now(tz=TIMEZONE),
+                "train_start": train["ts"].min(),
+                "train_end": train["ts"].max(),
+                "train_rows": len(train),
+                "target_day": target_day.date(),
+                "backtest_mape_pct": backtest_mape(model.name),
+            })
         out.append(pd.DataFrame({"issued_at": target_day, "ts": target["ts"].to_numpy(), "model": model.name,
                                  "yhat": yhat, "lower": lower, "upper": upper}))
     return pd.concat(out, ignore_index=True)
@@ -101,10 +111,17 @@ def next_target_day(df: pd.DataFrame) -> pd.Timestamp:
 def forecast(store: Store, target_day: str | None = None) -> pd.DataFrame:
     df = store.load_dataset()
     day = pd.Timestamp(target_day, tz=TIMEZONE) if target_day else next_target_day(df)
-    fc = forecast_day(df, day)
+    fc = forecast_day(df, day, save=True)
     store.save_forecast(fc)
     return fc
-
+def backtest_mape(model_name: str) -> float | None:
+    """Backtest error of this model, if a backtest has been run."""
+    path = REPORTS_DIR / "backtest_summary.csv"
+    if not path.exists():
+        return None
+    summary = pd.read_csv(path)
+    row = summary[summary["model"] == model_name]
+    return float(row["mape_pct"].iloc[0]) if not row.empty else None
 
 def replay(store: Store, days: int = 30) -> int:
     """Re-issue the forecasts of the last ``days`` days, as they would have been published.
@@ -127,7 +144,7 @@ def monitor(store: Store, model: str = MAIN_MODEL, recent_days: int = 14) -> dic
     joined = joined.sort_values("issued_at").drop_duplicates("ts", keep="last").rename(columns={"load_mw": "y"})
     cutoff = joined["ts"].max().normalize() - pd.Timedelta(days=recent_days)
     recent = joined[joined["ts"] >= cutoff]
-    bt_path = MODELS_DIR / "backtest_predictions.parquet"
+    bt_path = REPORTS_DIR / "backtest_predictions.parquet"
     if recent.empty or not bt_path.exists():
         raise RuntimeError("Run `backtest` and publish forecasts (`forecast` or `replay`) before monitoring.")
     reference = pd.read_parquet(bt_path)
@@ -136,6 +153,6 @@ def monitor(store: Store, model: str = MAIN_MODEL, recent_days: int = 14) -> dic
     checks = run_checks(recent, reference, data["temp_c"], ref_mape, target_coverage=100 * (1 - CONFIG.alpha))
     report = {"model": model, "recent_days": recent_days, "from": str(cutoff.date()),
               "status": "ALERT" if any(c["alert"] for c in checks) else "OK", "checks": checks}
-    MODELS_DIR.mkdir(exist_ok=True)
-    (MODELS_DIR / "monitoring.json").write_text(json.dumps(report, indent=2))
+    REPORTS_DIR.mkdir(exist_ok=True)
+    (REPORTS_DIR / "monitoring.json").write_text(json.dumps(report, indent=2))
     return report

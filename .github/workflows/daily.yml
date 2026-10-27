@@ -28,6 +28,6 @@ jobs:
         run: |
           git config user.name "gridcast-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add -f data/gridcast.duckdb models/*.json models/*.csv models/*.parquet
+          git add -f data/gridcast.duckdb reports/*.json models/*.csv models/*.parquet
           git commit -m "Daily forecast $(date -u +%F)" || echo "Nothing to commit"
           git push

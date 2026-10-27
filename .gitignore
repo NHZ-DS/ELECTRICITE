@@ -3,5 +3,6 @@ __pycache__/
 .pytest_cache/
 data/*.duckdb
 data/*.parquet
-models/
+reports/
+artifacts/
 *.log

@@ -9,7 +9,7 @@ import json
 import pandas as pd
 from fastapi import FastAPI, HTTPException, Query
 
-from gridcast.config import MODELS_DIR
+from gridcast.config import REPORTS_DIR
 from gridcast.data.store import Store
 from gridcast.pipeline import MAIN_MODEL
 
@@ -21,7 +21,7 @@ app = FastAPI(
 
 
 def _read_json(name: str) -> dict:
-    path = MODELS_DIR / name
+    path = REPORTS_DIR / name
     if not path.exists():
         raise HTTPException(404, f"{name} not found. Run the corresponding CLI command first.")
     return json.loads(path.read_text())
