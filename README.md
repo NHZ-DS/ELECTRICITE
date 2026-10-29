@@ -40,6 +40,7 @@ The last row is RTE's own forecast, published the day before on éCO2mix. It is 
 - **The hybrid model lost its advantage in realistic conditions.** With observed weather, it was the best model on cold hours. With forecast weather, its physics part passes the temperature error directly to the forecast, while LightGBM relies more on recent consumption. LightGBM was therefore chosen as the main model.
 - **Intervals stay calibrated.** Coverage is 88 to 90 % for a 90 % target, and intervals widen automatically to include the weather forecast error.
 - **Weak point: cold hours.** Below 5 °C, the error rises to 2.72 %. This is when the grid is under the most stress, and the first thing to improve.
+- **Monitoring in production.** At the start of the heating season (October 2026), the monitoring raised an alert: interval coverage dropped to 78 % while accuracy stayed good (1.8 % MAPE). Intervals calibrated on the mild weeks before became too narrow when demand started reacting to cold.
 
 ## Architecture
 
