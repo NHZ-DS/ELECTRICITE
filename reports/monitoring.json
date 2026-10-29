@@ -1,0 +1,36 @@
+{
+  "model": "lightgbm",
+  "recent_days": 14,
+  "from": "2026-10-15",
+  "status": "ALERT",
+  "checks": [
+    {
+      "name": "rolling_mape_pct",
+      "value": 1.8200969114029946,
+      "threshold": 3.037431875960084,
+      "alert": false,
+      "message": "MAPE 1.82 % on recent days (alert above 3.04 %)"
+    },
+    {
+      "name": "interval_coverage_pct",
+      "value": 78.28571428571428,
+      "threshold": 80.0,
+      "alert": true,
+      "message": "78.3 % of real values inside the 90 % intervals (alert below 80 %)"
+    },
+    {
+      "name": "temperature_out_of_range_share",
+      "value": 0.0,
+      "threshold": 0.05,
+      "alert": false,
+      "message": "0.0 % of recent hours outside the training range [-1.3, 32.5] \u00b0C"
+    },
+    {
+      "name": "residual_ks_pvalue",
+      "value": 0.006385644215815315,
+      "threshold": 0.01,
+      "alert": true,
+      "message": "KS test p-value 0.00639 between reference and recent errors (alert below 0.01)"
+    }
+  ]
+}

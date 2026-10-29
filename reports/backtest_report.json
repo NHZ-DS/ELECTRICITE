@@ -1,0 +1,52 @@
+{
+  "summary": [
+    {
+      "model": "lightgbm",
+      "mae_mw": 1043.4592996843794,
+      "rmse_mw": 1373.0489712056115,
+      "mape_pct": 2.0249545839733893,
+      "coverage_pct": 90.36434463794684,
+      "mean_width_mw": 4494.605165932278,
+      "mape_cold_pct": 2.7178820171146167
+    },
+    {
+      "model": "hybrid_physics_lgbm",
+      "mae_mw": 1284.1857491930298,
+      "rmse_mw": 1636.09424689706,
+      "mape_pct": 2.4974233993660153,
+      "coverage_pct": 88.27910174152154,
+      "mean_width_mw": 5140.151094374286,
+      "mape_cold_pct": 3.0492923499704796
+    },
+    {
+      "model": "rte_official_d-1",
+      "mae_mw": 1272.2296249618087,
+      "rmse_mw": 1636.8476669516226,
+      "mape_pct": 2.498288904377711,
+      "coverage_pct": NaN,
+      "mean_width_mw": NaN,
+      "mape_cold_pct": 2.4307923981607718
+    },
+    {
+      "model": "thermal_physics",
+      "mae_mw": 2338.7206261977467,
+      "rmse_mw": 2990.4385457078492,
+      "mape_pct": 4.463152515442817,
+      "coverage_pct": 88.71448212648946,
+      "mean_width_mw": 8855.451453381267,
+      "mape_cold_pct": 4.4244541877037715
+    },
+    {
+      "model": "seasonal_naive",
+      "mae_mw": 3508.12748243202,
+      "rmse_mw": 5115.370590743832,
+      "mape_pct": 6.554408649828258,
+      "coverage_pct": 90.36434463794684,
+      "mean_width_mw": 16435.89493583868,
+      "mape_cold_pct": 12.255959405733998
+    }
+  ],
+  "heating_sensitivity_mw_per_degC": 2307.600073027761,
+  "test_weeks": 52,
+  "weather": "forecast"
+}
