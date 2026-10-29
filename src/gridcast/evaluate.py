@@ -23,6 +23,7 @@ from gridcast.models import all_models
 log = logging.getLogger(__name__)
 RTE_BENCHMARK = "rte_official_d-1"
 
+
 def point_metrics(y: np.ndarray, yhat: np.ndarray) -> dict:
     err = y - yhat
     return {
@@ -39,12 +40,16 @@ def interval_metrics(y: np.ndarray, lower: np.ndarray, upper: np.ndarray) -> dic
         "coverage_pct": float(100 * np.mean((y >= lower) & (y <= upper))),
         "mean_width_mw": float(np.mean(upper - lower)),
     }
+
+
 def with_forecast_temperature(df: pd.DataFrame, forecast_temp: pd.DataFrame) -> pd.DataFrame:
     """Replace the observed temperature by the one forecast the day before, where it exists."""
     fc = forecast_temp.set_index("ts")["temp_c"]
     out = df.copy()
     out["temp_c"] = out["ts"].map(fc).fillna(out["temp_c"])
     return out
+
+
 def backtest(df: pd.DataFrame, test_weeks: int = 26, cfg: ModelConfig = CONFIG,
              models_factory=all_models,
              forecast_temp: pd.DataFrame | None = None) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -87,7 +92,7 @@ def backtest(df: pd.DataFrame, test_weeks: int = 26, cfg: ModelConfig = CONFIG,
             lower, upper = conf.interval(test["hour"], yhat)
             rows.append(pd.DataFrame({
                 "ts": test["ts"].to_numpy(), "model": model.name, "y": test["load_mw"].to_numpy(),
-                "yhat": yhat, "lower": lower, "upper": upper, "temp_c": test["temp_c"].to_numpy(),
+                "yhat": yhat, "lower": lower, "upper": upper, "temp_c": test_temp,
             }))
         if "rte_forecast_mw" in test and test["rte_forecast_mw"].notna().all():
             rows.append(pd.DataFrame({
