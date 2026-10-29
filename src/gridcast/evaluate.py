@@ -39,15 +39,32 @@ def interval_metrics(y: np.ndarray, lower: np.ndarray, upper: np.ndarray) -> dic
         "coverage_pct": float(100 * np.mean((y >= lower) & (y <= upper))),
         "mean_width_mw": float(np.mean(upper - lower)),
     }
-
+def with_forecast_temperature(df: pd.DataFrame, forecast_temp: pd.DataFrame) -> pd.DataFrame:
+    """Replace the observed temperature by the one forecast the day before, where it exists."""
+    fc = forecast_temp.set_index("ts")["temp_c"]
+    out = df.copy()
+    out["temp_c"] = out["ts"].map(fc).fillna(out["temp_c"])
+    return out
 def backtest(df: pd.DataFrame, test_weeks: int = 26, cfg: ModelConfig = CONFIG,
-             models_factory=all_models) -> tuple[pd.DataFrame, pd.DataFrame]:
+             models_factory=all_models,
+             forecast_temp: pd.DataFrame | None = None) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Return (predictions, summary).
 
     predictions: one row per (hour, model) with y, yhat, lower, upper
     summary: one row per model with point and interval metrics
+
+    forecast_temp: temperature forecast one day before. When given, models still learn
+    with the observed temperature, but calibrate and forecast with the forecast one,
+    exactly like in production.
     """
     feats = build_features(df, cfg).dropna(subset=FEATURES_ML + ["load_mw"]).reset_index(drop=True)
+    observed_temp = feats.set_index("ts")["temp_c"]
+    if forecast_temp is None:
+        feats_eval = feats
+    else:
+        feats_eval = (build_features(with_forecast_temperature(df, forecast_temp), cfg)
+                      .assign(temp_forecast=lambda f: f["ts"].isin(forecast_temp["ts"]))
+                      .dropna(subset=FEATURES_ML + ["load_mw"]).reset_index(drop=True))
     last_day = feats["ts"].dt.normalize().max()
     first_origin = last_day - pd.Timedelta(weeks=test_weeks) + pd.Timedelta(days=1)
     rows = []
@@ -55,10 +72,14 @@ def backtest(df: pd.DataFrame, test_weeks: int = 26, cfg: ModelConfig = CONFIG,
         origin = first_origin + pd.Timedelta(weeks=w)
         cal_start = origin - pd.Timedelta(days=cfg.calibration_days)
         train = feats[feats["ts"] < cal_start]
-        cal = feats[(feats["ts"] >= cal_start) & (feats["ts"] < origin)]
-        test = feats[(feats["ts"] >= origin) & (feats["ts"] < origin + pd.Timedelta(weeks=1))]
+        cal = feats_eval[(feats_eval["ts"] >= cal_start) & (feats_eval["ts"] < origin)]
+        test = feats_eval[(feats_eval["ts"] >= origin) & (feats_eval["ts"] < origin + pd.Timedelta(weeks=1))]
         if len(train) < 24 * 180 or test.empty:
             continue
+        if forecast_temp is not None and not test["temp_forecast"].all():
+            log.warning("Week of %s: forecast temperature missing on %d hours, observed used instead",
+                        origin.date(), int((~test["temp_forecast"]).sum()))
+        test_temp = test["ts"].map(observed_temp).to_numpy()  # cold-day metric uses the real temperature
         for model in models_factory(cfg):
             model.fit(train, train["load_mw"])
             conf = HourlyConformal(cfg.alpha).fit(cal["hour"], cal["load_mw"].to_numpy(), model.predict(cal))
@@ -72,7 +93,7 @@ def backtest(df: pd.DataFrame, test_weeks: int = 26, cfg: ModelConfig = CONFIG,
             rows.append(pd.DataFrame({
                 "ts": test["ts"].to_numpy(), "model": RTE_BENCHMARK, "y": test["load_mw"].to_numpy(),
                 "yhat": test["rte_forecast_mw"].to_numpy(), "lower": np.nan, "upper": np.nan,
-                "temp_c": test["temp_c"].to_numpy(),
+                "temp_c": test_temp,
             }))
         log.info("Backtest week %d/%d done (origin %s)", w + 1, test_weeks, origin.date())
     preds = pd.concat(rows, ignore_index=True)

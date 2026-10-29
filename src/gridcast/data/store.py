@@ -2,7 +2,7 @@
 
 Tables:
 - consumption(ts TIMESTAMPTZ, load_mw DOUBLE, rte_forecast_mw DOUBLE)  RTE's own day-ahead forecast
-- temperature(ts TIMESTAMPTZ, temp_c DOUBLE, kind VARCHAR)  kind = 'observed' or 'forecast'
+- temperature(ts TIMESTAMPTZ, temp_c DOUBLE, kind VARCHAR)  kind = 'observed', 'forecast' or 'forecast_d1'
 - forecasts(issued_at, ts, model, yhat, lower, upper)        every forecast ever published
 """
 from __future__ import annotations
@@ -66,12 +66,17 @@ class Store:
         df = self.con.execute("""
             WITH temp AS (
                 SELECT ts, arg_min(temp_c, CASE kind WHEN 'observed' THEN 0 ELSE 1 END) AS temp_c
-                FROM temperature GROUP BY ts
+                FROM temperature WHERE kind IN ('observed', 'forecast') GROUP BY ts
             )
             SELECT temp.ts, c.load_mw, temp.temp_c, c.rte_forecast_mw
             FROM temp LEFT JOIN consumption c USING (ts)
             ORDER BY temp.ts
         """).df()
+        df["ts"] = pd.to_datetime(df["ts"], utc=True).dt.tz_convert(TIMEZONE)
+        return df
+    def load_temperature(self, kind: str) -> pd.DataFrame:
+        """One kind of temperature only, e.g. 'forecast_d1' (forecast issued one day before)."""
+        df = self.con.execute("SELECT ts, temp_c FROM temperature WHERE kind = ? ORDER BY ts", [kind]).df()
         df["ts"] = pd.to_datetime(df["ts"], utc=True).dt.tz_convert(TIMEZONE)
         return df
 

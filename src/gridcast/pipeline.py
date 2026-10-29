@@ -50,11 +50,23 @@ def load_demo(store: Store, days: int = 760) -> dict:
     store.save_temperature(future, "forecast")
     return {"hours_with_consumption": len(past), "forecast_hours": len(future)}
 
-
+def ingest_forecast_weather(store: Store, start: str, end: str | None = None) -> dict:
+    """Download the temperature forecast issued one day before, for a realistic backtest."""
+    end = end or (date.today() - timedelta(days=1)).isoformat()
+    n = store.save_temperature(weather.fetch_previous_day_forecast(start, end), "forecast_d1")
+    return {"temperature_forecast_d1_rows": n}
 # ---------------------------------------------------------------- backtest
-def run_backtest(store: Store, test_weeks: int = 26, cfg: ModelConfig = CONFIG) -> pd.DataFrame:
+def run_backtest(store: Store, test_weeks: int = 26, cfg: ModelConfig = CONFIG,
+                 weather_mode: str = "observed") -> pd.DataFrame:
+    """weather_mode: 'observed' (real temperature, optimistic) or 'forecast' (forecast issued the day before)."""
     df = store.load_dataset()
-    preds, summary = backtest(df.dropna(subset=["load_mw"]), test_weeks=test_weeks, cfg=cfg)
+    forecast_temp = None
+    if weather_mode == "forecast":
+        forecast_temp = store.load_temperature("forecast_d1")
+        if forecast_temp.empty:
+            raise RuntimeError("No forecast temperature. Run: python -m gridcast.cli ingest-forecast-weather")
+    preds, summary = backtest(df.dropna(subset=["load_mw"]), test_weeks=test_weeks, cfg=cfg,
+                              forecast_temp=forecast_temp)
     REPORTS_DIR.mkdir(exist_ok=True)
     preds.to_parquet(REPORTS_DIR / "backtest_predictions.parquet", index=False)
     summary.to_csv(REPORTS_DIR / "backtest_summary.csv", index=False)
@@ -63,7 +75,8 @@ def run_backtest(store: Store, test_weeks: int = 26, cfg: ModelConfig = CONFIG) 
     sensitivity = ThermalModel().fit(feats, feats["load_mw"]).heating_sensitivity_mw_per_degree()
     report = {"summary": summary.to_dict(orient="records"),
               "heating_sensitivity_mw_per_degC": sensitivity,
-              "test_weeks": test_weeks}
+                            "test_weeks": test_weeks,
+              "weather": weather_mode}
     (REPORTS_DIR / "backtest_report.json").write_text(json.dumps(report, indent=2))
     return summary
 
