@@ -26,7 +26,7 @@ def _common_params() -> dict:
         "latitude": ",".join(str(c.lat) for c in CITIES),
         "longitude": ",".join(str(c.lon) for c in CITIES),
         "hourly": "temperature_2m",
-        "timezone": TIMEZONE,
+        "timezone": "GMT",
     }
 
 
@@ -47,10 +47,8 @@ def _weighted_national(payload) -> pd.DataFrame:
     values = np.nan_to_num(temps.to_numpy())
     national = (values * weights).sum(axis=1) / (mask * weights).sum(axis=1)
     out = pd.DataFrame({"ts": temps.index, "temp_c": national})
-    out["ts"] = out["ts"].dt.tz_localize(TIMEZONE, ambiguous="NaT", nonexistent="NaT")
+    out["ts"] = out["ts"].dt.tz_localize("UTC").dt.tz_convert(TIMEZONE)
     return out.dropna().reset_index(drop=True)
-
-
 def fetch_history(start: str, end: str, timeout: int = 120) -> pd.DataFrame:
     """Observed national temperature, dates as YYYY-MM-DD (both included)."""
     params = _common_params() | {"start_date": start, "end_date": end}
