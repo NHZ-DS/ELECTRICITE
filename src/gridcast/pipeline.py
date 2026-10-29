@@ -18,7 +18,7 @@ from gridcast.models import ThermalModel, all_models
 from gridcast.monitoring import run_checks
 
 log = logging.getLogger(__name__)
-MAIN_MODEL = "hybrid_physics_lgbm"
+MAIN_MODEL = "lightgbm"
 
 
 # ---------------------------------------------------------------- ingestion
