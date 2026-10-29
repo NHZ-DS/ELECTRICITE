@@ -1,7 +1,7 @@
 """Small DuckDB storage layer.
 
 Tables:
-- consumption(ts TIMESTAMPTZ, load_mw DOUBLE)
+- consumption(ts TIMESTAMPTZ, load_mw DOUBLE, rte_forecast_mw DOUBLE)  RTE's own day-ahead forecast
 - temperature(ts TIMESTAMPTZ, temp_c DOUBLE, kind VARCHAR)  kind = 'observed' or 'forecast'
 - forecasts(issued_at, ts, model, yhat, lower, upper)        every forecast ever published
 """
@@ -15,7 +15,7 @@ import pandas as pd
 from gridcast.config import DB_PATH, TIMEZONE
 
 SCHEMA = """
-CREATE TABLE IF NOT EXISTS consumption (ts TIMESTAMPTZ PRIMARY KEY, load_mw DOUBLE);
+CREATE TABLE IF NOT EXISTS consumption (ts TIMESTAMPTZ PRIMARY KEY, load_mw DOUBLE, rte_forecast_mw DOUBLE);
 CREATE TABLE IF NOT EXISTS temperature (ts TIMESTAMPTZ, kind VARCHAR, temp_c DOUBLE, PRIMARY KEY (ts, kind));
 CREATE TABLE IF NOT EXISTS forecasts (
     issued_at TIMESTAMPTZ, ts TIMESTAMPTZ, model VARCHAR,
@@ -46,7 +46,9 @@ class Store:
         return len(df)
 
     def save_consumption(self, df: pd.DataFrame) -> int:
-        return self._upsert("consumption", df[["ts", "load_mw"]], ["ts"])
+        out = df[["ts", "load_mw"]].copy()
+        out["rte_forecast_mw"] = df["rte_forecast_mw"] if "rte_forecast_mw" in df else float("nan")
+        return self._upsert("consumption", out, ["ts"])
 
     def save_temperature(self, df: pd.DataFrame, kind: str) -> int:
         out = df[["ts", "temp_c"]].assign(kind=kind)
@@ -66,7 +68,7 @@ class Store:
                 SELECT ts, arg_min(temp_c, CASE kind WHEN 'observed' THEN 0 ELSE 1 END) AS temp_c
                 FROM temperature GROUP BY ts
             )
-            SELECT temp.ts, c.load_mw, temp.temp_c
+            SELECT temp.ts, c.load_mw, temp.temp_c, c.rte_forecast_mw
             FROM temp LEFT JOIN consumption c USING (ts)
             ORDER BY temp.ts
         """).df()

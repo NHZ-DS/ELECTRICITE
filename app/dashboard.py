@@ -28,7 +28,7 @@ MODEL_LABELS = {
     "seasonal_naive": "Seasonal naive (last week)",
 }
 
-
+BENCHMARK_LABELS = MODEL_LABELS | {"rte_official_d-1": "RTE official forecast (D-1)"}
 @st.cache_data(ttl=600)
 def load_data():
     store = Store(read_only=True)
@@ -94,7 +94,7 @@ left, right = st.columns([3, 2])
 with left:
     st.subheader("Model comparison (rolling backtest)")
     if report:
-        table = pd.DataFrame(report["summary"]).assign(model=lambda d: d["model"].map(MODEL_LABELS))
+        table = pd.DataFrame(report["summary"]).assign(model=lambda d: d["model"].map(BENCHMARK_LABELS))
         table = table.rename(columns={"model": "Model", "mae_mw": "MAE (MW)", "rmse_mw": "RMSE (MW)",
                                       "mape_pct": "MAPE (%)", "coverage_pct": "Coverage (%)",
                                       "mean_width_mw": "Interval width (MW)", "mape_cold_pct": "MAPE < 5 °C (%)"})

@@ -4,6 +4,7 @@ For each week of the test period:
   1. train on everything before the calibration window
   2. calibrate conformal intervals on the next ``calibration_days`` (unseen by the model)
   3. forecast the following week, and compare with what really happened
+  4. compare with RTE's official day-ahead forecast on the same hours, when available
 
 The model never sees the future, exactly as in production.
 """
@@ -20,7 +21,7 @@ from gridcast.features import FEATURES_ML, build_features
 from gridcast.models import all_models
 
 log = logging.getLogger(__name__)
-
+RTE_BENCHMARK = "rte_official_d-1"
 
 def point_metrics(y: np.ndarray, yhat: np.ndarray) -> dict:
     err = y - yhat
@@ -32,11 +33,12 @@ def point_metrics(y: np.ndarray, yhat: np.ndarray) -> dict:
 
 
 def interval_metrics(y: np.ndarray, lower: np.ndarray, upper: np.ndarray) -> dict:
+    if np.isnan(lower).all():  # benchmark without interval
+        return {"coverage_pct": np.nan, "mean_width_mw": np.nan}
     return {
         "coverage_pct": float(100 * np.mean((y >= lower) & (y <= upper))),
         "mean_width_mw": float(np.mean(upper - lower)),
     }
-
 
 def backtest(df: pd.DataFrame, test_weeks: int = 26, cfg: ModelConfig = CONFIG,
              models_factory=all_models) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -65,6 +67,12 @@ def backtest(df: pd.DataFrame, test_weeks: int = 26, cfg: ModelConfig = CONFIG,
             rows.append(pd.DataFrame({
                 "ts": test["ts"].to_numpy(), "model": model.name, "y": test["load_mw"].to_numpy(),
                 "yhat": yhat, "lower": lower, "upper": upper, "temp_c": test["temp_c"].to_numpy(),
+            }))
+        if "rte_forecast_mw" in test and test["rte_forecast_mw"].notna().all():
+            rows.append(pd.DataFrame({
+                "ts": test["ts"].to_numpy(), "model": RTE_BENCHMARK, "y": test["load_mw"].to_numpy(),
+                "yhat": test["rte_forecast_mw"].to_numpy(), "lower": np.nan, "upper": np.nan,
+                "temp_c": test["temp_c"].to_numpy(),
             }))
         log.info("Backtest week %d/%d done (origin %s)", w + 1, test_weeks, origin.date())
     preds = pd.concat(rows, ignore_index=True)

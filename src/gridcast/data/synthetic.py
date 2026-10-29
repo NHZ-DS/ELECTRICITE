@@ -41,4 +41,6 @@ def make_synthetic(start: str = "2022-01-01", days: int = 730, seed: int = 0) ->
     cooling = 600 * np.clip(felt - 22, 0, None)
     load = 47000 * daily * weekly + heating + cooling + rng.normal(0, 900, n)
 
-    return pd.DataFrame({"ts": ts, "load_mw": load, "temp_c": temp})
+    # Stand-in for RTE's official day-ahead forecast (demo only)    
+    rte_forecast = load * (1 + rng.normal(0, 0.012, n))
+    return pd.DataFrame({"ts": ts, "load_mw": load, "temp_c": temp, "rte_forecast_mw": rte_forecast})

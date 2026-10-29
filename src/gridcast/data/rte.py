@@ -5,6 +5,7 @@ Two datasets are combined:
 - ``eco2mix-national-tr``: real-time data (recent period)
 
 Raw data is published every 15 or 30 minutes, in MW. We resample it to hourly means.
+We also keep RTE's official day-ahead forecast (``prevision_j1``), used as a professional benchmark.
 """
 from __future__ import annotations
 
@@ -22,37 +23,49 @@ BASE_URL = "https://odre.opendatasoft.com/api/explore/v2.1/catalog/datasets/{dat
 DATASETS = ("eco2mix-national-cons-def", "eco2mix-national-tr")
 
 
-def _fetch_dataset(dataset: str, start: str, end: str, timeout: int = 120) -> pd.DataFrame:
+def _request(dataset: str, fields: str, start: str, end: str, timeout: int) -> pd.DataFrame:
     params = {
-        "select": "date_heure,consommation",
+        "select": fields,
         "where": f"date_heure >= date'{start}' AND date_heure < date'{end}'",
         "timezone": TIMEZONE,
         "delimiter": ";",
     }
     resp = requests.get(BASE_URL.format(dataset=dataset), params=params, timeout=timeout)
     resp.raise_for_status()
-    df = pd.read_csv(io.StringIO(resp.text), sep=";")
+    return pd.read_csv(io.StringIO(resp.text), sep=";")
+
+
+def _fetch_dataset(dataset: str, start: str, end: str, timeout: int = 120) -> pd.DataFrame:
+    """Consumption, plus RTE's own day-ahead forecast (``prevision_j1``) when the dataset has it."""
+    try:
+        df = _request(dataset, "date_heure,consommation,prevision_j1", start, end, timeout)
+    except requests.HTTPError:
+        log.warning("%s: no prevision_j1 field, downloading consumption only", dataset)
+        df = _request(dataset, "date_heure,consommation", start, end, timeout)
     if df.empty:
-        return pd.DataFrame(columns=["ts", "load_mw"])
+        return pd.DataFrame(columns=["ts", "load_mw", "rte_forecast_mw"])
     missing = {"date_heure", "consommation"} - set(df.columns)
     if missing:
         raise ValueError(f"{dataset}: unexpected columns, missing {missing}. Got {list(df.columns)}")
-    df = df.rename(columns={"date_heure": "ts", "consommation": "load_mw"})
+    df = df.rename(columns={"date_heure": "ts", "consommation": "load_mw", "prevision_j1": "rte_forecast_mw"})
+    if "rte_forecast_mw" not in df:
+        df["rte_forecast_mw"] = float("nan")
     df["ts"] = pd.to_datetime(df["ts"], utc=True).dt.tz_convert(TIMEZONE)
     df["source"] = dataset
     return df
 
 
 def to_hourly(raw: pd.DataFrame) -> pd.DataFrame:
-    """Hourly mean consumption. Quarter-hours without a value are ignored."""
+    """Hourly means. Quarter-hours without a value are ignored."""
+    cols = ["load_mw", "rte_forecast_mw"]
     if raw.empty:
-        return pd.DataFrame(columns=["ts", "load_mw"])
-    s = (raw.dropna(subset=["load_mw"])
-            .set_index("ts")["load_mw"]
-            .sort_index())
-    hourly = s.resample("1h").mean().dropna()
-    return hourly.rename("load_mw").reset_index()
-
+        return pd.DataFrame(columns=["ts"] + cols)
+    hourly = (raw.dropna(subset=["load_mw"])
+                 .set_index("ts")[cols]
+                 .sort_index()
+                 .resample("1h").mean()
+                 .dropna(subset=["load_mw"]))
+    return hourly.reset_index()
 
 def fetch_consumption(start: str, end: str) -> pd.DataFrame:
     """Hourly national consumption between ``start`` (included) and ``end`` (excluded), dates as YYYY-MM-DD.

@@ -64,7 +64,7 @@ def build_features(df: pd.DataFrame, cfg: ModelConfig = CONFIG) -> pd.DataFrame:
     """Expects an hourly frame with columns ts, load_mw (may be NaN on future hours), temp_c."""
     df = df.sort_values("ts").reset_index(drop=True)
     feats = pd.concat(
-        [df[["ts", "load_mw"]],
+        [df[["ts", "load_mw"] + (["rte_forecast_mw"] if "rte_forecast_mw" in df else [])],
          calendar_features(df["ts"]),
          thermal_features(df["temp_c"], cfg),
          lag_features(df["load_mw"], cfg)],
